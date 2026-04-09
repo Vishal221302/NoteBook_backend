@@ -56,6 +56,9 @@ const seedAdmin = async () => {
         console.error("Error seeding admin:", err);
     }
 };
+app.get("/", (req, res) => {
+  res.send("Server is working ✅");
+});
 
 // Login Route
 app.post('/api/login', async (req, res) => {
