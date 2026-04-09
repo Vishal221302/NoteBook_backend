@@ -4,6 +4,7 @@ const cors = require('cors');
 require('dotenv').config();
 
 const app = express();
+mongoose.set('strictPopulate', false); // Added for resilience with mixed data
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
@@ -56,7 +57,11 @@ const seedAdmin = async () => {
     }
 };
 app.get("/", (req, res) => {
-  res.send("Server is working ✅");
+  res.json({
+      status: "Server is working ✅",
+      mongo_status: mongoose.connection.readyState === 1 ? "Connected" : "Disconnected",
+      env_check: process.env.MONGODB_URI ? "URI Present" : "URI Missing"
+  });
 });
 
 // Login Route
@@ -140,7 +145,11 @@ app.get('/api/topics/:languageId', async (req, res) => {
         res.json(formatted);
     } catch (err) {
         console.error('Error fetching topics by language:', err);
-        res.status(500).json({ success: false, message: "Failed to fetch topics" });
+        res.status(500).json({ 
+            success: false, 
+            message: "Failed to fetch topics",
+            error: err.message 
+        });
     }
 });
 
@@ -165,7 +174,8 @@ app.get('/api/topics', async (req, res) => {
         res.status(500).json({ 
             success: false, 
             message: "Failed to fetch topics", 
-            error: process.env.NODE_ENV === 'development' ? err.message : undefined 
+            error: err.message, // Temporarily showing error for debugging on Render
+            stack: process.env.NODE_ENV === 'development' ? err.stack : undefined 
         });
     }
 });
