@@ -32,6 +32,7 @@ const TopicSchema = new mongoose.Schema({
     title: { type: String, required: true },
     content: { type: String, default: "" },
     language: { type: mongoose.Schema.Types.ObjectId, ref: 'Language', default: null },
+    position: { type: Number, default: 0 },
     created_at: { type: Date, default: Date.now }
 });
 const Topic = mongoose.model('Topic', TopicSchema);
@@ -133,13 +134,14 @@ app.get('/api/topics/:languageId', async (req, res) => {
             return res.status(400).json({ success: false, message: "Invalid Language ID" });
         }
 
-        const results = await Topic.find({ language: languageId }).populate('language');
+        const results = await Topic.find({ language: languageId }).populate('language').sort({ position: 1, created_at: 1 });
         const formatted = results.map(t => ({ 
             id: t._id, 
             title: t.title, 
             content: t.content, 
             language_id: t.language?._id || languageId,
             language_name: t.language?.name || 'Unknown',
+            position: t.position || 0,
             created_at: t.created_at 
         }));
         res.json(formatted);
@@ -157,7 +159,7 @@ app.get('/api/topics/:languageId', async (req, res) => {
 app.get('/api/topics', async (req, res) => {
     try {
         console.log('Fetching all topics with language population...');
-        const results = await Topic.find().populate('language').sort({ created_at: -1 });
+        const results = await Topic.find().populate('language').sort({ position: 1, created_at: 1 });
         
         const formatted = results.map(t => ({ 
             id: t._id, 
@@ -165,6 +167,7 @@ app.get('/api/topics', async (req, res) => {
             content: t.content || '', 
             language_id: t.language?._id || null,
             language_name: t.language?.name || 'Unknown',
+            position: t.position || 0,
             created_at: t.created_at 
         }));
         
@@ -219,10 +222,16 @@ app.post('/api/topics', async (req, res) => {
             languageRef = language_id;
         }
 
+        // Get highest position for this language or overall
+        const query = languageRef ? { language: languageRef } : { language: null };
+        const lastTopic = await Topic.findOne(query).sort({ position: -1 });
+        const nextPosition = lastTopic ? (lastTopic.position || 0) + 1 : 0;
+
         const newTopic = new Topic({ 
             title, 
             content: content || "", 
-            language: languageRef 
+            language: languageRef,
+            position: nextPosition
         });
 
         const saved = await newTopic.save();
@@ -285,6 +294,24 @@ app.delete('/api/topics/:id', async (req, res) => {
     } catch (err) {
         console.error('Error deleting topic:', err);
         res.status(500).json({ success: false, message: "Failed to delete topic" });
+    }
+});
+
+// Reorder topics
+app.put('/api/reorder-topics', async (req, res) => {
+    const { topicIds } = req.body; // Array of IDs in the new order
+    try {
+        const bulkOps = topicIds.map((id, index) => ({
+            updateOne: {
+                filter: { _id: id },
+                update: { position: index }
+            }
+        }));
+        await Topic.bulkWrite(bulkOps);
+        res.json({ success: true, message: "Topics reordered successfully" });
+    } catch (err) {
+        console.error('Error reordering topics:', err);
+        res.status(500).json({ success: false, message: "Failed to reorder topics" });
     }
 });
 
